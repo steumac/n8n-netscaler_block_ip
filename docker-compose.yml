@@ -20,9 +20,9 @@ x-n8n: &service-n8n
     - N8N_ENCRYPTION_KEY
     - N8N_USER_MANAGEMENT_JWT_SECRET
     - N8N_PROTOCOL=http
-    - N8N_HOST=n8n.metime.it
-    - N8N_EDITOR_BASE_URL=https://n8n.metime.it/
-    - WEBHOOK_URL=https://n8n.metime.it/
+    - N8N_HOST=n8n.domain.com
+    - N8N_EDITOR_BASE_URL=https://n8n.domain.com/
+    - WEBHOOK_URL=https://n8n.domain.com/
     - OLLAMA_HOST=10.0.0.73:11434
     - NODE_FUNCTION_ALLOW_BUILTIN=*
     - NODE_FUNCTION_ALLOW_EXTERNAL=*
