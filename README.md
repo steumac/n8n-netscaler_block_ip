@@ -3,7 +3,7 @@
 Here's the complete Linkedin article that explain how it works:
 https://www.linkedin.com/pulse/introducing-lightweight-soar-solution-citrix-n8nio-stefano-baronio-rjclf/
 
-Here are 5 n8n workflows that will implement a lightweight SOAR solution for Citrix Netscaler. This laboratory example shows how to digital jail the offender IPs that overlimit the a rate-limiting policy implemented in the Netscaler.
+There are 5 n8n workflows that will implement a lightweight SOAR solution for Citrix Netscaler. This laboratory example shows how to digital jail the offender IPs that overlimit the a rate-limiting policy implemented in the Netscaler.
 
 For those unfamiliar, n8n.io is a leading open-source automation platform offering versatile solutions both on-premises and in the cloud.
 
