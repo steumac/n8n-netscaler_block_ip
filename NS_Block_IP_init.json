@@ -516,7 +516,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Error Loop Over Items for Netscaler {{ $json.nsip }}",
         "emailType": "text",
         "message": "=Error Loop Over Items for Netscaler {{ $json.nsip }}\n\nconfig_key: {{ $json.config_key }}\nconfig_value: {{ $json.config_value }}\nconfig_key_type: {{ $json.config_key_type }}\ncached: {{ $json.cached }}\n\n",
@@ -572,7 +572,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Error adding config vars to Netscaler {{ $('Loop Over Items2').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error adding config vars to Netscaler {{ $('Loop Over Items2').item.json.nsip }}\n\nconfig_key: {{ $('Loop Over Items2').item.json.config_key }}\nconfig_value: {{ $('Loop Over Items2').item.json.config_value }}\nconfig_key_type: {{ $('Loop Over Items2').item.json.config_key_type }}\ncached: {{ $('Loop Over Items2').item.json.cached }}\n\nNetscaler error:\n{{ $json.errorMessage }}\n\nError description:\n{{ $json.errorDescription }}\n\nErrorCode: {{ $json.errorCode }}\n\nErrorStatus: {{ $json.errorStatus }}\n\n",
@@ -596,7 +596,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Config init completed",
         "emailType": "text",
         "message": "=\nNetscaler bulk config completed.\n\nHere's the report:\n\n{{ JSON.stringify($json.allNetscalerConfigs, null, 2) }}\n",
@@ -914,7 +914,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Error setting new TTL on Netscaler {{ $('Extract TTL value').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error setting ns var on Netscaler {{ $('Extract TTL value').item.json.nsip }}\n\nconfig_key_name: {{ $('Extract TTL value').item.json.config_key_name }}\nconfig_value: {{ $('Extract TTL value').item.json.config_key_value }}\n\nNetscaler error:\n{{ $('Set new TTL').item.json.error.cause.message }}\n",
@@ -1034,7 +1034,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - cannot save config on ns {{ $('NS_ToBeSaved').item.json.nsip }}",
         "emailType": "text",
         "message": "=Problem arised while trying to save the ns config on\nNetscaler - {{ $('NS_ToBeSaved').item.json.nsip }}",

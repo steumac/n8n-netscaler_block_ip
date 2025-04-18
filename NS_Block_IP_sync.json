@@ -220,7 +220,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Error fetching dataset on Netscaler {{ $('Clean dataset name').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error fetching dataset on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
@@ -275,7 +275,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@sorgere.cloud",
+        "sendTo": "info@domain.com",
         "subject": "=[n8n] - Error fetching blocked IPs on Netscaler {{ $('Get right datasets').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error fetching blocked IPs on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\ndataset name: {{ $('Get right datasets').item.json.matchingDatasets }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
