@@ -1,0 +1,326 @@
+{
+  "name": "NS_Block_IP_clear",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1180,
+        -200
+      ],
+      "id": "d62e4915-399d-4871-9b62-cb4fe764a113",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://{{ $('Get expired IP').item.json.nsip }}/nitro/v1/config/policydataset_value_binding/{{ $('Get expired IP').item.json.datasetname }}?args=value:{{ $('Get expired IP').item.json.ip }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "9b3065fb-9727-47b4-9d45-f71f42dc6e35",
+      "name": "Remove IP from Dataset",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -380,
+        -60
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n-- Update queue record to mark as inactive and update dataset counts\nUPDATE queue\nSET \n    active = FALSE,\n    deactivated_at = NOW(),\n    comment = comment || ' | Expired at ' || NOW()\nWHERE id = $1;\n\n-- Decrement IP count for the dataset\nUPDATE netscaler_datasets\nSET ip_count = GREATEST(0, ip_count - 1),\n    last_updated = NOW()\nWHERE nsip = $2 AND dataset_name = $4;\n\n-- Log the operation\nINSERT INTO operation_log (operation_type, nsip, ip, dataset_name, status, message)\nVALUES ('UNBLOCK_IP', $2, $3, $4, 'SUCCESS', 'IP unblocked due to TTL expiration');\n",
+        "options": {
+          "queryReplacement": "={{ $json.id }}, {{ $json.nsip }}, {{ $json.ip }} ,{{ $json.datasetname }}, "
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -580,
+        -60
+      ],
+      "id": "79252da7-52c9-4158-96b2-b0fe7dc868ea",
+      "name": "Update IP Unblock Status",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Select all active IPs that have expired\nSELECT \n    nsip, \n    ip, \n    datasetname,\n    id,\n    expires_at,\n    NOW() - expires_at AS time_since_expiry\nFROM queue\nWHERE \n     active = true\n     AND expires_at < NOW()\nORDER BY \n    expires_at ASC;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -980,
+        -200
+      ],
+      "id": "ef29a51d-3fb3-41a9-9d6f-581d4fdbf716",
+      "name": "Get expired IP",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "COMMIT;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -140,
+        -100
+      ],
+      "id": "b10761ff-9131-4216-b80c-19c38dc6b8c2",
+      "name": "Commit IP unblock",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Block IP released on ",
+        "emailType": "text",
+        "message": "=Cleared blocked IP:\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        60,
+        -100
+      ],
+      "id": "f17448eb-8180-4862-8379-aa82eff7ffae",
+      "name": "Cleared blocked IPs",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ROLLBACK;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -140,
+        100
+      ],
+      "id": "30386ba6-3342-43cc-9cef-ab8276bcbb8d",
+      "name": "Rollback IP unblock",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error fetching blocked IPs on Netscaler {{ $('Get right datasets').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error fetching blocked IPs on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\ndataset name: {{ $('Get right datasets').item.json.matchingDatasets }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        60,
+        100
+      ],
+      "id": "2d9e90f1-edbc-4094-b11b-f3c7fe68822b",
+      "name": "Error clearing blocked IPs",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -800,
+        -200
+      ],
+      "id": "4fa386c9-4b9f-4fec-8884-1127bb1d7b1d",
+      "name": "Loop Over Items"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get expired IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove IP from Dataset": {
+      "main": [
+        [
+          {
+            "node": "Commit IP unblock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback IP unblock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update IP Unblock Status": {
+      "main": [
+        [
+          {
+            "node": "Remove IP from Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get expired IP": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit IP unblock": {
+      "main": [
+        [
+          {
+            "node": "Cleared blocked IPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback IP unblock": {
+      "main": [
+        [
+          {
+            "node": "Error clearing blocked IPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Update IP Unblock Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error clearing blocked IPs": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleared blocked IPs": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6573e335-342f-4d0e-ba00-1ea0e3399c64",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "ZTrMsCAJfiZFZXKz",
+  "tags": []
+}

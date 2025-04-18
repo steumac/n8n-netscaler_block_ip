@@ -1,0 +1,627 @@
+{
+  "name": "NS_Block_IP_sync",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_config\nWHERE config_key = 'Block_IP_Dataset_VAR_name';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -240,
+        -240
+      ],
+      "id": "e791d78a-96f2-4a74-a01d-ccd887a311dc",
+      "name": "Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -20,
+        -240
+      ],
+      "id": "26581083-e845-4dde-922e-f9741a18d053",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "url": "=https://{{ $json.nsip }}/nitro/v1/config/policydataset",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "17445638-fd13-419b-8e03-1a7a44f572e0",
+      "name": "Get all Netscaler DataSet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        460,
+        -240
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://{{ $('Loop Over Items1').item.json.nsip }}/nitro/v1/config/policydataset_value_binding/{{ $('Loop Over Items1').item.json.datasetname }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "84d2ff3e-8fb6-44b8-874c-8917202b4206",
+      "name": "Get blocked IP list",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1040,
+        200
+      ],
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $('Loop Over Items2').context['done'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1500,
+        200
+      ],
+      "id": "69e27330-d670-4696-aab4-cf1c4f860757",
+      "name": "Loop Over Items2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  id: $input.first().json.id,\n  nsip: $input.first().json.nsip,\n  config_key: $input.first().json.config_key,\n  config_key_name: $input.first().json.config_key_name,\n  config_key_value: $input.first().json.config_key_value.replace(/^\\\\\"|\\\\\"|\"$/g, '')\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -240
+      ],
+      "id": "b62c2224-dad5-4dda-a17f-7eae864405bc",
+      "name": "Clean dataset name"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all the datasets that comply with the Dataset VAR name value\n\n// Get all input items\nconst items = $input.all();\n\n// Get the configuration key value (prefix) from a previous node\nconst configKeyValue = $('Clean dataset name').first().json.config_key_value;\n\n// Log for debugging\nconsole.log(\"Config key value:\", configKeyValue);\n\n// The input structure is different than expected\nconst inputData = items[0].json;\n\n// Correct JMESPath query for this structure\nconst jmesPathQuery = `policydataset[?starts_with(name, '${configKeyValue}')].name`;\nconst matchingDatasets = $jmespath(inputData, jmesPathQuery);\n\n// Log all matching datasets\nconsole.log(\"Matching datasets:\", matchingDatasets);\n\n// Get the nsip value\nconst nsip = $('Clean dataset name').first().json.nsip;\n\n// Format the output as requested\nconst formattedOutput = matchingDatasets.map(datasetname => ({\n  nsip: nsip,\n  datasetname: datasetname\n}));\n\n// Return the formatted array of objects\nreturn formattedOutput;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -240
+      ],
+      "id": "790e18ec-d16e-44e8-ac86-c7b9d820a5b3",
+      "name": "Get right datasets"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Insert new IP into queue\nINSERT INTO queue (\n    nsip,\n    ip,\n    attack_type,\n    vserver,\n    datasetname,\n    timestamp,\n    processed,\n    processed_at,\n    active,\n    expires_at,\n    block_count,\n    comment\n)\nVALUES (\n    $1, $2, 'imported', 'imported', $3 , NOW(), TRUE, NOW(), TRUE, NOW() + ($4 || ' minutes')::INTERVAL,1,\n    'Imported from netscaler'\n)\nRETURNING id;\n\n-- Log the operation\nINSERT INTO operation_log (\n    operation_type,\n    nsip,\n    ip,\n    vserver,\n    status,\n    message\n)\nVALUES (\n    'Block_IP',\n    $1,\n    $2,\n    'imported',\n    'SUCCESS',\n    'New IP queued for blocking. Attack type: imported'\n);\n",
+        "options": {
+          "queryReplacement": "={{ $json.nsip }}, {{ $('Loop Over Items2').item.json.value }},{{ $('Get right datasets').item.json.datasetname }}, {{ $json.config_key_value }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2160,
+        360
+      ],
+      "id": "20aa061c-bb02-48dd-9906-cb0e41d9c5d1",
+      "name": "Add IP to Queue",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Check if the blocked ip exists in DB and fetch the TTL value we'll need later\nWITH existence_check AS (\n  SELECT EXISTS (\n    SELECT 1 \n    FROM queue \n    WHERE nsip = $1 \n    AND ip = $2 \n    AND datasetname = $3\n  ) AS record_exists\n),\nconfig_data AS (\n  SELECT \n    id,\n    nsip,\n    config_key,\n    config_key_name,\n    config_key_value,\n    last_updated\n  FROM netscaler_config\n  WHERE config_key = 'Block_IP_TTL_VAR_name'\n  AND nsip = $1\n)\nSELECT \n  e.record_exists,\n  c.id,\n  c.nsip,\n  c.config_key,\n  c.config_key_name,\n  c.config_key_value,\n  c.last_updated\nFROM existence_check e\nCROSS JOIN config_data c;\n",
+        "options": {
+          "queryReplacement": "={{ $('Loop Over Items').item.json.nsip }}, {{ $json.value }}, {{ $json.name }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        360
+      ],
+      "id": "03513f32-46b0-4577-ad76-cae62b5f323e",
+      "name": "Check blocked IP in DB",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2c879fa9-6288-44c5-b959-4781a1531107",
+              "leftValue": "={{ $json.record_exists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1960,
+        360
+      ],
+      "id": "c466c588-14bf-49ee-8b32-6f35727fe059",
+      "name": "IP in DB"
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error fetching dataset on Netscaler {{ $('Clean dataset name').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error fetching dataset on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        -40
+      ],
+      "id": "657ac64b-821f-4849-834c-c0b1021d8f7e",
+      "name": "Error Fetching datasets",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 0.5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        -240
+      ],
+      "id": "0b0f6d96-f350-4306-855e-4cea82c60864",
+      "name": "Wait",
+      "webhookId": "1e40e8d2-50c9-4074-a6a8-300fce3aacca",
+      "notes": "Let's not overheat the Nitro API"
+    },
+    {
+      "parameters": {
+        "content": "## .. Check IPs on Netscaler / Add them into DB if missing",
+        "height": 440,
+        "width": 1460,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        920,
+        120
+      ],
+      "typeVersion": 1,
+      "id": "ea3b2161-2f8b-4e12-8750-e30abc8f916a",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error fetching blocked IPs on Netscaler {{ $('Get right datasets').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error fetching blocked IPs on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\ndataset name: {{ $('Get right datasets').item.json.matchingDatasets }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1240,
+        400
+      ],
+      "id": "1190b88d-4192-4101-9a49-9f4d804ee196",
+      "name": "Error Fetching blocked IPs",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Fetching datasets\n",
+        "height": 420,
+        "width": 2020,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -480,
+        -320
+      ],
+      "typeVersion": 1,
+      "id": "e4ee9bae-b5d1-4a59-b522-73495fed97f4",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "policydataset_value_binding",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        200
+      ],
+      "id": "1078e15a-a513-46b9-81d3-e081a923c67b",
+      "name": "Split each IP"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -460,
+        -240
+      ],
+      "id": "7dc61d50-d224-4afb-8922-fc3e5810d3a1",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO netscaler_datasets (nsip, dataset_name)\nVALUES ('{{$json.nsip}}', '{{$json.datasetname}}')\nON CONFLICT (nsip, dataset_name) DO NOTHING;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1120,
+        -240
+      ],
+      "id": "7486b579-e62f-402d-8379-5912f3f243ee",
+      "name": "Create DB Dataset if missing",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $('Loop Over Items1').context['done'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        -240
+      ],
+      "id": "a92b7d9a-0408-444b-af88-7f833e73fc7b",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn {};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        160
+      ],
+      "id": "a4d0c454-853e-4b3b-a15f-b1b35c4671f0",
+      "name": "Reset Loop output",
+      "notes": "Here we need to reset the loop output, otherwise it will trigger an infinite loop with the previous one."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Postgres": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Clean dataset name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all Netscaler DataSet": {
+      "main": [
+        [
+          {
+            "node": "Get right datasets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Fetching datasets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get blocked IP list": {
+      "main": [
+        [
+          {
+            "node": "Split each IP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Fetching blocked IPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [
+          {
+            "node": "Reset Loop output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check blocked IP in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean dataset name": {
+      "main": [
+        [
+          {
+            "node": "Get all Netscaler DataSet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get right datasets": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add IP to Queue": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check blocked IP in DB": {
+      "main": [
+        [
+          {
+            "node": "IP in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IP in DB": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add IP to Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get blocked IP list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split each IP": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create DB Dataset if missing": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create DB Dataset if missing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Loop output": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0631d61d-c3f1-4da8-871c-e917d56e7158",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "5VwaE5afE1Bd4kPw",
+  "tags": []
+}

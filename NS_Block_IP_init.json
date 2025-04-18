@@ -1,0 +1,1463 @@
+{
+  "name": "NS_Block_IP_init",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// If one or two vars are missing, assuming ns configuration is incomplete and set it up again\n\n// Get the base data from the previous node\nconst baseData = {\n  nsip: $('Loop Over Items').first().json.netscaler_ip,\n\n};\n\n// Define the variables we need to fetch\nreturn [\n {\n    ...baseData,\n    config_key: 'Block_IP_TTL_VAR_name',\n    config_key_name: $('Loop Over Items').first().json.Block_IP_TTL_VAR_name,\n    config_key_value: $('Loop Over Items').first().json.Block_IP_TTL_VAR_value,\n    config_key_type: 'ulong',\n    cached: false\n  },\n  {\n    ...baseData,\n    config_key: 'Block_IP_Dataset_VAR_name',\n    config_key_name: $('Loop Over Items').first().json.Block_IP_Dataset_VAR_name,\n    // particular way of passing the string due to nitro api 'needs'\n    config_key_value: \"\\\\\\\"\" + $('Loop Over Items').first().json.Block_IP_Dataset_VAR_value + \"\\\\\\\"\",\n    config_key_type: \"text(255)\",\n    cached: false\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -660,
+        100
+      ],
+      "id": "d34df744-a4aa-40e6-b37b-670dcbaaae07",
+      "name": "Setup Variables Node"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS record_count \nFROM netscaler_config\nWHERE nsip = $1\n\n",
+        "options": {
+          "queryReplacement": "={{ $json.netscaler_ip }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1360,
+        80
+      ],
+      "id": "c258c440-5d96-4955-bc70-0a24668e8d2d",
+      "name": "Check Cached Config1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "41b604b3-0df7-49f9-b984-e4d01a080d18",
+              "leftValue": "={{ $json.record_count }}",
+              "rightValue": "2",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1000,
+        80
+      ],
+      "id": "3006ce1e-306f-4f29-b11f-c77e0bdb473b",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2280,
+        -260
+      ],
+      "id": "01c2b6d1-d498-4c3c-85c6-6f418df6b26d",
+      "name": "When clicking ‘Test workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "19zaI5Ij9M-VY7patAIwEg0MwF0Jb7XqQBNyqYEARKIE",
+          "mode": "list",
+          "cachedResultName": "netscalers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/19zaI5Ij9M-VY7patAIwEg0MwF0Jb7XqQBNyqYEARKIE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "netscalers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/19zaI5Ij9M-VY7patAIwEg0MwF0Jb7XqQBNyqYEARKIE/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2080,
+        -260
+      ],
+      "id": "6ca1c6b8-9dec-4bb6-afc6-e5e85ca530c8",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CgpesuLUccuUpFaO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# DEBUG\n## TABLE queue\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## TABLE netscaler_config\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## TABLE: netscaler_datasets\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## TABLE: netscaler operation_log",
+        "height": 1220,
+        "width": 900,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1880,
+        840
+      ],
+      "typeVersion": 1,
+      "id": "a46a5b0c-8d78-4c64-8e67-9e6d8562e845",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Main queue table for IP blocking requests\nCREATE TABLE IF NOT EXISTS queue (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    ip VARCHAR(255) NOT NULL,\n    attack_type VARCHAR(50) NOT NULL,\n    vserver VARCHAR(255) NOT NULL,\n    datasetname VARCHAR(255),\n    netscaler_index INTEGER,\n    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    processed BOOLEAN DEFAULT FALSE,\n    processed_at TIMESTAMPTZ,\n    active BOOLEAN DEFAULT FALSE,\n    deactivated_at TIMESTAMPTZ,\n    expires_at TIMESTAMPTZ,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    retry_count INTEGER DEFAULT 0,\n    last_error TEXT,\n    comment TEXT\n);\n\n-- Configuration table for caching Netscaler settings\nCREATE TABLE IF NOT EXISTS netscaler_config (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    config_key VARCHAR(255) NOT NULL,\n    config_value TEXT NOT NULL,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, config_key)\n);\n\n-- Dataset tracking table to avoid constant HTTP requests\nCREATE TABLE IF NOT EXISTS netscaler_datasets (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    dataset_name VARCHAR(255) NOT NULL,\n    ip_count INTEGER DEFAULT 0,\n    max_capacity INTEGER DEFAULT 50000,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, dataset_name)\n);\n\n-- Operational log for tracking actions and errors\nCREATE TABLE IF NOT EXISTS operation_log (\n    id SERIAL PRIMARY KEY,\n    operation_type VARCHAR(50) NOT NULL,\n    nsip VARCHAR(255),\n    ip VARCHAR(255),\n    dataset_name VARCHAR(255),\n    status VARCHAR(50) NOT NULL,\n    message TEXT,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Add indexes for performance\nCREATE INDEX IF NOT EXISTS idx_queue_nsip ON queue(nsip);\nCREATE INDEX IF NOT EXISTS idx_queue_ip ON queue(ip);\nCREATE INDEX IF NOT EXISTS idx_queue_processed ON queue(processed);\nCREATE INDEX IF NOT EXISTS idx_queue_timestamp ON queue(timestamp);\nCREATE INDEX IF NOT EXISTS idx_queue_active ON queue(active);\nCREATE INDEX IF NOT EXISTS idx_queue_expires_at ON queue(expires_at);\nCREATE INDEX IF NOT EXISTS idx_queue_dataset ON queue(datasetname);\n\n-- Index for config lookups\nCREATE INDEX IF NOT EXISTS idx_config_nsip_key ON netscaler_config(nsip, config_key);\n\n-- Index for dataset tracking\nCREATE INDEX IF NOT EXISTS idx_datasets_nsip ON netscaler_datasets(nsip);\nCREATE INDEX IF NOT EXISTS idx_datasets_name ON netscaler_datasets(dataset_name);\nCREATE INDEX IF NOT EXISTS idx_datasets_count ON netscaler_datasets(ip_count);\n\n-- Create a function to find or create dataset\nCREATE OR REPLACE FUNCTION find_available_dataset(p_nsip VARCHAR, p_default_prefix VARCHAR DEFAULT 'Block_IP_list_')\nRETURNS VARCHAR AS $$\nDECLARE\n    v_dataset VARCHAR;\n    v_count INTEGER;\n    v_max_capacity INTEGER := 50000;\n    v_highest_num INTEGER := 0;\n    v_dataset_rec RECORD;\nBEGIN\n    -- Find a dataset with room for more IPs\n    SELECT dataset_name INTO v_dataset\n    FROM netscaler_datasets\n    WHERE nsip = p_nsip AND ip_count < max_capacity\n    ORDER BY dataset_name\n    LIMIT 1;\n    \n    -- If found, return it\n    IF v_dataset IS NOT NULL THEN\n        RETURN v_dataset;\n    END IF;\n    \n    -- If not found, determine the next dataset name\n    FOR v_dataset_rec IN \n        SELECT dataset_name \n        FROM netscaler_datasets \n        WHERE nsip = p_nsip\n        ORDER BY dataset_name\n    LOOP\n        -- Extract number from dataset name\n        v_count := REGEXP_REPLACE(v_dataset_rec.dataset_name, '[^0-9]', '', 'g');\n        IF v_count::INTEGER > v_highest_num THEN\n            v_highest_num := v_count::INTEGER;\n        END IF;\n    END LOOP;\n    \n    -- Create new dataset name with incremented number\n    v_dataset := p_default_prefix || (v_highest_num + 1)::VARCHAR;\n    \n    -- Insert the new dataset record\n    INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count, max_capacity)\n    VALUES (p_nsip, v_dataset, 0, v_max_capacity);\n    \n    -- Log the creation of a new dataset\n    INSERT INTO operation_log (operation_type, nsip, dataset_name, status, message)\n    VALUES ('CREATE_DATASET', p_nsip, v_dataset, 'SUCCESS', 'Created new dataset');\n    \n    RETURN v_dataset;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to check and find expired IPs\nCREATE OR REPLACE FUNCTION clean_expired_ips()\nRETURNS TABLE (nsip VARCHAR, ip VARCHAR, datasetname VARCHAR) AS $$\nBEGIN\n    RETURN QUERY\n    SELECT q.nsip, q.ip, q.datasetname\n    FROM queue q\n    WHERE q.active = TRUE \n      AND q.expires_at < NOW();\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a procedure to increment IP count for a dataset\nCREATE OR REPLACE PROCEDURE increment_dataset_ip_count(p_nsip VARCHAR, p_dataset VARCHAR)\nLANGUAGE plpgsql AS $$\nBEGIN\n    -- Increment the count and update timestamp\n    UPDATE netscaler_datasets\n    SET ip_count = ip_count + 1,\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset;\n    \n    -- If no rows updated, it means the dataset doesn't exist yet\n    IF NOT FOUND THEN\n        INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count)\n        VALUES (p_nsip, p_dataset, 1);\n    END IF;\nEND;\n$$;\n\n-- Create a procedure to decrement IP count for a dataset\nCREATE OR REPLACE PROCEDURE decrement_dataset_ip_count(p_nsip VARCHAR, p_dataset VARCHAR)\nLANGUAGE plpgsql AS $$\nBEGIN\n    -- Decrement the count and update timestamp\n    UPDATE netscaler_datasets\n    SET ip_count = GREATEST(0, ip_count - 1),\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset;\nEND;\n$$;\n\n-- Create a function to check if an IP is already blocked\nCREATE OR REPLACE FUNCTION is_ip_blocked(p_ip VARCHAR)\nRETURNS BOOLEAN AS $$\nDECLARE\n    v_is_blocked BOOLEAN;\nBEGIN\n    SELECT EXISTS (\n        SELECT 1 FROM queue\n        WHERE ip = p_ip AND active = TRUE\n    ) INTO v_is_blocked;\n    \n    RETURN v_is_blocked;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to update or insert config values\nCREATE OR REPLACE FUNCTION upsert_config(p_nsip VARCHAR, p_key VARCHAR, p_value TEXT)\nRETURNS VOID AS $$\nBEGIN\n    INSERT INTO netscaler_config (nsip, config_key, config_value, last_updated)\n    VALUES (p_nsip, p_key, p_value, NOW())\n    ON CONFLICT (nsip, config_key) \n    DO UPDATE SET \n        config_value = p_value,\n        last_updated = NOW();\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to get config value with default\nCREATE OR REPLACE FUNCTION get_config(p_nsip VARCHAR, p_key VARCHAR, p_default TEXT DEFAULT NULL)\nRETURNS TEXT AS $$\nDECLARE\n    v_value TEXT;\nBEGIN\n    SELECT config_value INTO v_value\n    FROM netscaler_config\n    WHERE nsip = p_nsip AND config_key = p_key;\n    \n    IF v_value IS NULL THEN\n        RETURN p_default;\n    ELSE\n        RETURN v_value;\n    END IF;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to batch process IPs\nCREATE OR REPLACE FUNCTION get_unprocessed_ips(p_batch_size INTEGER DEFAULT 10)\nRETURNS SETOF queue AS $$\nBEGIN\n    RETURN QUERY\n    SELECT * FROM queue\n    WHERE processed = FALSE\n    ORDER BY timestamp ASC\n    LIMIT p_batch_size;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to mark IPs as processed with a specific dataset\nCREATE OR REPLACE FUNCTION mark_ip_processed(\n    p_id INTEGER, \n    p_datasetname VARCHAR, \n    p_netscaler_index INTEGER, \n    p_ttl_minutes INTEGER DEFAULT 1440\n)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET processed = TRUE,\n        processed_at = NOW(),\n        active = TRUE,\n        datasetname = p_datasetname,\n        netscaler_index = p_netscaler_index,\n        expires_at = NOW() + (p_ttl_minutes * INTERVAL '1 minute')\n    WHERE id = p_id;\n    \n    -- Log the operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        'BLOCK_IP', \n        nsip, \n        ip, \n        p_datasetname, \n        'SUCCESS', \n        'IP blocked successfully'\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to mark IPs as deactivated\nCREATE OR REPLACE FUNCTION deactivate_ip(p_id INTEGER)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET active = FALSE,\n        deactivated_at = NOW()\n    WHERE id = p_id;\n    \n    -- Log the operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        'UNBLOCK_IP', \n        nsip, \n        ip, \n        datasetname, \n        'SUCCESS', \n        'IP unblocked due to TTL expiration'\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to record errors\nCREATE OR REPLACE FUNCTION record_error(\n    p_id INTEGER,\n    p_error TEXT,\n    p_retry BOOLEAN DEFAULT TRUE\n)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET retry_count = retry_count + 1,\n        last_error = p_error,\n        processed = NOT p_retry  -- If no retry, mark as processed\n    WHERE id = p_id;\n    \n    -- Log the error\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        CASE \n            WHEN processed = FALSE THEN 'BLOCK_IP_ERROR'\n            ELSE 'UNBLOCK_IP_ERROR'\n        END,\n        nsip, \n        ip, \n        datasetname, \n        'ERROR', \n        p_error\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to sync dataset counts from Netscaler\nCREATE OR REPLACE FUNCTION sync_dataset_counts(p_nsip VARCHAR, p_dataset_name VARCHAR, p_actual_count INTEGER)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE netscaler_datasets\n    SET ip_count = p_actual_count,\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset_name;\n    \n    -- If dataset doesn't exist yet, create it\n    IF NOT FOUND THEN\n        INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count, last_updated)\n        VALUES (p_nsip, p_dataset_name, p_actual_count, NOW());\n    END IF;\n    \n    -- Log the sync operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        dataset_name, \n        status, \n        message\n    )\n    VALUES (\n        'SYNC_DATASET', \n        p_nsip, \n        p_dataset_name, \n        'SUCCESS', \n        'Synced dataset count: ' || p_actual_count\n    );\nEND;\n$$ LANGUAGE plpgsql;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1840,
+        960
+      ],
+      "id": "cf4a9d13-b497-4440-9d08-2913dfb3cc52",
+      "name": "Create Table queue",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Configuration table for caching Netscaler settings\nCREATE TABLE IF NOT EXISTS netscaler_config (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    config_key VARCHAR(255) NOT NULL,\n    config_key_name VARCHAR(255) NOT NULL,\n    config_key_value TEXT NOT NULL,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, config_key_name)\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1840,
+        1220
+      ],
+      "id": "fcddcb30-768b-453c-86a2-6bb7cc8bd083",
+      "name": "Create Table netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_config;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1640,
+        1220
+      ],
+      "id": "b1253385-b98a-4043-a11d-c8c0dcdb7eac",
+      "name": "SELECT * FROM netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_datasets;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1640,
+        1500
+      ],
+      "id": "322576f9-f6f2-4597-a787-e708f4f83a12",
+      "name": "SELECT * FROM netscaler_dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Dataset tracking table to avoid constant HTTP requests\nCREATE TABLE IF NOT EXISTS netscaler_datasets (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    dataset_name VARCHAR(255) NOT NULL,\n    ip_count INTEGER DEFAULT 0,\n    max_capacity INTEGER DEFAULT 50000,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, dataset_name)\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1840,
+        1500
+      ],
+      "id": "6016d78d-bd4a-41d6-b503-3f678db89d14",
+      "name": "Create Table netscaler_dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE netscaler_datasets RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1420,
+        1500
+      ],
+      "id": "eb4ec000-9ebd-4cc2-a810-b133d80c2062",
+      "name": "DELETE * FROM netscaler_datasets",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE netscaler_config RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1420,
+        1220
+      ],
+      "id": "94278b1d-dbec-4b47-a35f-873af6599404",
+      "name": "DELETE * FROM netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Read config sheet and check if stored in DB\n",
+        "height": 1460,
+        "width": 1560,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2400,
+        -920
+      ],
+      "typeVersion": 1,
+      "id": "3242771c-ca7d-4de9-8231-18e8f9f45641",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## If not stored, store it in the DB and add it to the Netscaler if necessary\n",
+        "height": 700,
+        "width": 1840,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -800,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "ba587c17-0041-480a-a84d-ff06f4659111",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://{{ $('Loop Over Items2').item.json.nsip }}/nitro/v1/config/nsvariable/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"nsvariable\":{\n\"name\":\"{{ $('Loop Over Items2').item.json.config_key_name }}\",\n\"type\":\"{{ $('Loop Over Items2').item.json.config_key_type }}\",\n\"scope\": \"Global\",\n\"init\":\"{{ $('Loop Over Items2').item.json.config_value }}\"\n}} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        100
+      ],
+      "id": "63e76720-df9c-48e3-b3a9-812bf12b600d",
+      "name": "Check for config variable",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Commit the transaction\nCOMMIT;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        -120
+      ],
+      "id": "54276f00-f323-49d2-985a-4fbce9c3a611",
+      "name": "Commit insert",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Rollback the transaction\nROLLBACK;",
+        "options": {
+          "queryReplacement": ""
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        260
+      ],
+      "id": "3e79a509-5c82-4c73-aa62-c696d5982270",
+      "name": "Rollback insert",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 0.5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        820,
+        -120
+      ],
+      "id": "d5d540a2-67d1-424b-a057-1b7f8a4f2e9b",
+      "name": "Wait",
+      "webhookId": "a75b67b7-e40c-4eb4-9514-60bd51606285",
+      "notes": "Just wait a sec to let Nitro API work smoothly"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM operation_log;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1640,
+        1800
+      ],
+      "id": "7ea6d6ba-b0dd-4fd0-a1ed-424092eb1c8e",
+      "name": "SELECT * FROM operation_log",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Operational log for tracking actions and errors\nCREATE TABLE IF NOT EXISTS operation_log (\n    id SERIAL PRIMARY KEY,\n    operation_type VARCHAR(50) NOT NULL,\n    nsip VARCHAR(255),\n    ip VARCHAR(255),\n    vserver VARCHAR(255),\n    dataset_name VARCHAR(255),\n    status VARCHAR(50) NOT NULL,\n    message TEXT,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1840,
+        1800
+      ],
+      "id": "5f9330a4-4f5d-41cb-8c2a-18d325b7695b",
+      "name": "Create Table operation_log",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- re initialize table, index and key\nTRUNCATE TABLE operation_log RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1420,
+        1800
+      ],
+      "id": "88038b0c-bc46-4d06-85f4-3c9cf5d3633d",
+      "name": "DELETE * FROM operation_log",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Insert the log entry for configuration changes\nINSERT INTO operation_log (\n    operation_type, \n    nsip, \n    ip, \n    dataset_name,\n    status, \n    message,\n    created_at\n)\nVALUES (\n    'CONFIG', \n    $1, \n    NULL, \n    NULL,\n    'SUCCESS', \n    'Added ' || $2 || ' = ' || $3 || ' config var',\n    NOW()\n);\n",
+        "options": {
+          "queryReplacement": "={{ $('Loop Over Items2').item.json.nsip }}, {{ $('Loop Over Items2').item.json.config_key }}, {{ $('Loop Over Items2').item.json.config_key_value }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        640,
+        -120
+      ],
+      "id": "a0acfdec-19ba-46c6-b04c-b2b1e031ce1a",
+      "name": "Log insert",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Insert the log entry for error\nINSERT INTO operation_log (\n    operation_type, \n    nsip, \n    ip, \n    dataset_name,\n    status, \n    message,\n    created_at\n)\nVALUES (\n    'CONFIG', \n    $1, \n    NULL, \n    NULL,\n    'ERROR', \n    'Adding ' || $2 || ' = ' || $3 || ' config var',\n    NOW()\n);\n",
+        "options": {
+          "queryReplacement": "={{ $('Loop Over Items2').item.json.nsip }}, {{ $('Loop Over Items2').item.json.config_key_name }}, {{ $('Loop Over Items2').item.json.config_key_value }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        640,
+        260
+      ],
+      "id": "cba4e72f-758a-4687-a6b4-38f1b7036183",
+      "name": "Log error",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error Loop Over Items for Netscaler {{ $json.nsip }}",
+        "emailType": "text",
+        "message": "=Error Loop Over Items for Netscaler {{ $json.nsip }}\n\nconfig_key: {{ $json.config_key }}\nconfig_value: {{ $json.config_value }}\nconfig_key_type: {{ $json.config_key_type }}\ncached: {{ $json.cached }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        280
+      ],
+      "id": "0346a9ca-a911-49bf-b3b8-b8f7718929e0",
+      "name": "Error Loop Over Items",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $('Loop Over Items2').context['done'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -440,
+        100
+      ],
+      "id": "3b07a84a-aec3-48b9-bc7e-5ff4603d53a6",
+      "name": "Loop Over Items2",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "onError": "continueErrorOutput",
+      "notes": "Loop over the three vars needed for ns config.\nThe reset condition is needed because of the way Loop Over Items looping status works (it won't reset and won't process the second loop from the previous Loop Over Items otherwise)."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1860,
+        -260
+      ],
+      "id": "1464e113-3ebf-4633-9334-da0f1ca371f9",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error adding config vars to Netscaler {{ $('Loop Over Items2').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error adding config vars to Netscaler {{ $('Loop Over Items2').item.json.nsip }}\n\nconfig_key: {{ $('Loop Over Items2').item.json.config_key }}\nconfig_value: {{ $('Loop Over Items2').item.json.config_value }}\nconfig_key_type: {{ $('Loop Over Items2').item.json.config_key_type }}\ncached: {{ $('Loop Over Items2').item.json.cached }}\n\nNetscaler error:\n{{ $json.errorMessage }}\n\nError description:\n{{ $json.errorDescription }}\n\nErrorCode: {{ $json.errorCode }}\n\nErrorStatus: {{ $json.errorStatus }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        820,
+        260
+      ],
+      "id": "5d39d4fc-ee2d-4254-9e01-2c1c51db3408",
+      "name": "Error adding config",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Config init completed",
+        "emailType": "text",
+        "message": "=\nNetscaler bulk config completed.\n\nHere's the report:\n\n{{ JSON.stringify($json.allNetscalerConfigs, null, 2) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1000,
+        -100
+      ],
+      "id": "872e0210-7123-4446-8705-1b6919bafbfd",
+      "name": "Config finished",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DROP TABLE netscaler_config;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1200,
+        1220
+      ],
+      "id": "bd1264c1-4f25-45d1-bea9-0880efd7f6f4",
+      "name": "DRop TABLE netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM queue;\n\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1640,
+        960
+      ],
+      "id": "c7ca089a-16bf-4cd0-beb5-f143074bdfc4",
+      "name": "SELECT * FROM queue",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE queue RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1420,
+        960
+      ],
+      "id": "769f2f7f-6392-46fd-9f49-3fcf0abf5663",
+      "name": "DELETE * FROM queue",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Begin transaction\nBEGIN;\n-- Insert config values only if cached parameter is false\nDO $$\nBEGIN\n    IF $5::boolean = false THEN\n        INSERT INTO netscaler_config (nsip, config_key, config_key_name, config_key_value, last_updated)\n        VALUES ($1, $2, $3, $4, NOW())\n        ON CONFLICT (nsip, config_key_name) \n        DO UPDATE SET \n            config_key_value = $4,\n            last_updated = NOW();\n    END IF;\nEND $$;",
+        "options": {
+          "queryReplacement": "={{ $json.nsip }}, {{ $json.config_key }},{{ $json.config_key_name }}, {{ $json.config_key_value }}, {{ $json.cached }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -200,
+        100
+      ],
+      "id": "65b5971a-cee1-4c9e-b86c-a2c174bc7017",
+      "name": "Store config var in DB",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://{{ $('Loop Over Items').item.json.netscaler_ip }}/nitro/v1/config/nsvariable/{{ $('Loop Over Items').item.json.Block_IP_TTL_VAR_name }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "attrs",
+              "value": "init"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -660,
+        -840
+      ],
+      "id": "f7a1d25d-9616-4c4c-845a-bce4c9bf024c",
+      "name": "Fetch TTL from Netscaler",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the input data\nconst inputData = $input.first().json;\n\n// Extract the XML string from the data property\nconst xmlString = inputData.data;\n\n// Use regex to extract the value between <init> and </init> tags\nconst initValueMatch = xmlString.match(/<init>(\\d+)<\\/init>/);\n\n// Initialize the variable to store the extracted value\nlet nsVariableValue = null;\n\n// Check if we found a match and extract the value\nif (initValueMatch && initValueMatch[1]) {\n  nsVariableValue = parseInt(initValueMatch[1], 10);\n}\n\n// Log the extracted value for debugging\nconsole.log(\"Extracted NS Variable Value:\", nsVariableValue);\n\n// Return the extracted value\nreturn {\n  json: {\n    nsVariableValue: nsVariableValue,\n    nsip: $('Loop Over Items').first().json.netscaler_ip,\n    config_key_name: $('Loop Over Items').first().json.Block_IP_TTL_VAR_name,\n    config_key_value: $('Loop Over Items').first().json.Block_IP_TTL_VAR_value\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        -840
+      ],
+      "id": "ec0af60b-bc2e-45d9-8f82-411d568dd035",
+      "name": "Extract TTL value"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the input data\nconst inputData = $input.first().json;\n\n// Extract the XML string from the error description\nconst xmlString = inputData.error?.description;\n\n// Use regex to extract the error code from the XML\nconst errorCodeMatch = xmlString?.match(/<errorcode>(\\d+)<\\/errorcode>/);\n\n// Initialize the variable to store the extracted error code\nlet errorCode = null;\n\n// Check if we found a match and extract the error code\nif (errorCodeMatch && errorCodeMatch[1]) {\n  errorCode = parseInt(errorCodeMatch[1], 10);\n}\n\n// Log the extracted error code for debugging\nconsole.log(\"Extracted Error Code:\", errorCode);\n\n// Check if error code is 2854\nif (errorCode === 2854) {\n  // Return errorStatus = 409 as requested\n  return {\n    json: {\n      errorStatus: 409,\n      errorCode: errorCode,\n      errorMessage: \"Advanced expression entity with same name already exists.\"\n    }\n  };\n} else {\n  // Throw an error for any other error code\n  const errorMessage = `Unexpected error code: ${errorCode}`;\n  console.error(errorMessage);\n  throw new Error(errorMessage);\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        140
+      ],
+      "id": "3a11410b-ecd4-4aaf-9127-87ef4bca596d",
+      "name": "Check ns VAR",
+      "alwaysOutputData": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://{{ $('Extract TTL value').item.json.nsip }}/nitro/v1/config/nsvariable/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"nsvariable\":{\n\"name\":\"{{ $('Extract TTL value').item.json.config_key_name }}\",\n\"init\":\"{{ $('Extract TTL value').item.json.config_key_value }}\"\n}} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        -740
+      ],
+      "id": "f9c97b8c-ce89-4d5c-b9b0-8f285e89d54c",
+      "name": "Set new TTL",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Update TTL on Netscaler if needed",
+        "height": 740,
+        "width": 1840
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -800,
+        -920
+      ],
+      "typeVersion": 1,
+      "id": "bcfcd334-52e2-4a1d-bd02-cd5d1909202d",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_config;\n\n",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1360,
+        -100
+      ],
+      "id": "8f8ba04b-06d4-478f-bfbf-f057c1403d09",
+      "name": "Check Cached Config",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all input items\nconst items = $input.all();\n\n// Extract all items into a single array\nconst allItems = items.map(item => item.json);\n\n// Get unique nsips using JavaScript\nconst nsips = [...new Set(allItems.map(item => item.nsip))];\n\n// Process each nsip\nconst nsipConfigs = nsips.map(nsip => {\n  // Get all items for this nsip using JMESPath\n  const nsipItems = $jmespath(allItems, `[?nsip=='${nsip}']`);\n    \n  // Create the base object\n  const nsipObject = {\n    nsip: nsip\n  };\n  \n  // Add all config keys and values\n  nsipItems.forEach(item => {\n    nsipObject[item.config_key] = item.config_key_name;\n    \n    // Clean the config_key_value with a simple regex\n    let cleanValue = item.config_key_value;\n    if (typeof cleanValue === 'string') {\n      cleanValue = cleanValue.replace(/^\\\\\"|\\\\\"|\"$/g, '');\n    }\n    \n    nsipObject[item.config_key_name] = cleanValue;\n  });\n  \n  return nsipObject;\n});\n\n// Create a higher-level container object\nconst result = {\n  allNetscalerConfigs: nsipConfigs,\n  configCount: nsipConfigs.length,\n  timestamp: new Date().toISOString()\n};\n\n// Return the result\nreturn result;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1180,
+        -100
+      ],
+      "id": "3ae3794f-d42c-4e22-9139-d8122bbea0a6",
+      "name": "Report"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n\nUPDATE netscaler_config \nSET config_key_value = '{{$json.config_key_value}}', \n    last_updated = CURRENT_TIMESTAMP \nWHERE nsip = '{{$json.nsip}}' \nAND config_key_name = '{{$json.config_key_name}}';\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        60,
+        -740
+      ],
+      "id": "2cbaa336-1c48-4d53-9b82-225d30acb1e4",
+      "name": "Update TTL in DB",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ROLLBACK;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        520,
+        -540
+      ],
+      "id": "426b50ea-ba0c-4bb4-bc8c-287bc49f965f",
+      "name": "Rollback",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "COMMIT;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        520,
+        -740
+      ],
+      "id": "17de464d-63cd-4d6e-9709-21d93be75757",
+      "name": "Commit TTL",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error setting new TTL on Netscaler {{ $('Extract TTL value').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error setting ns var on Netscaler {{ $('Extract TTL value').item.json.nsip }}\n\nconfig_key_name: {{ $('Extract TTL value').item.json.config_key_name }}\nconfig_value: {{ $('Extract TTL value').item.json.config_key_value }}\n\nNetscaler error:\n{{ $('Set new TTL').item.json.error.cause.message }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        -540
+      ],
+      "id": "9d1b873d-50bc-4c9a-9562-f26bfbac01bd",
+      "name": "Error Setting new TTL",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $json.nsip }}/nitro/v1/config/nsconfig?action=save",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"nsconfig\":\n    {}\n}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "d6707e01-572d-4f2f-9e71-336ed8263e21",
+      "name": "Save Netscaler Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -1360,
+        -320
+      ],
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6b14f471-0e0e-4eb0-a497-c273fcb4243c",
+              "leftValue": "={{ $json.nsVariableValue }}",
+              "rightValue": "={{ $json.config_key_value }}",
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -200,
+        -840
+      ],
+      "id": "ec51d343-80c7-49e7-b200-53b128523f77",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set workflow static data\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.SaveNsConf.ToBeSaved) {\n  throw Error;\n}\nconst saveConf = staticData.SaveNsConf;\nreturn {\n  saveConf: saveConf,\n  nsip: $('Will_SaveConf').first().json.nsip\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1660,
+        -280
+      ],
+      "id": "bff09ef2-f79a-4948-bf75-93df4b72a21a",
+      "name": "NS_ToBeSaved",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Set workflow static data\nconst staticData = $getWorkflowStaticData('global');\n\n// Initialize SaveNsConf if it doesn't exist\nif (!staticData.SaveNsConf) {\n  staticData.SaveNsConf = {}; \n}\n\nstaticData.SaveNsConf['ToBeSaved'] = {\n  ToBeSaved: true,\n  message: \"Save it!\"\n};\n\n\nreturn {\n  nsip: $('Extract TTL value').first().json.nsip,\n  config_key_name: $('Extract TTL value').first().json.config_key_name,\n  config_key_value: $('Extract TTL value').first().json.config_key_value\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        -740
+      ],
+      "id": "f9f7da65-bd39-4e3b-a6e7-5e4874ea79ff",
+      "name": "Will_SaveConf",
+      "notes": "Here we use the workflow variables as I didn't find a better way to mark the workflow to save conf"
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - cannot save config on ns {{ $('NS_ToBeSaved').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Problem arised while trying to save the ns config on\nNetscaler - {{ $('NS_ToBeSaved').item.json.nsip }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1000,
+        -320
+      ],
+      "id": "64dcdd3c-b7f6-45c6-8f0c-1b52707f8435",
+      "name": "Cannot save ns config",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Setup Variables Node": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Cached Config1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Fetch TTL from Netscaler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Setup Variables Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for config variable": {
+      "main": [
+        [
+          {
+            "node": "Commit insert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check ns VAR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit insert": {
+      "main": [
+        [
+          {
+            "node": "Log insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback insert": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log insert": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log error": {
+      "main": [
+        [
+          {
+            "node": "Error adding config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store config var in DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "NS_ToBeSaved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Cached Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error adding config": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store config var in DB": {
+      "main": [
+        [
+          {
+            "node": "Check for config variable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch TTL from Netscaler": {
+      "main": [
+        [
+          {
+            "node": "Extract TTL value",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract TTL value": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check ns VAR": {
+      "main": [
+        [
+          {
+            "node": "Commit insert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set new TTL": {
+      "main": [
+        [
+          {
+            "node": "Commit TTL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Cached Config": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report": {
+      "main": [
+        [
+          {
+            "node": "Config finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback": {
+      "main": [
+        [
+          {
+            "node": "Error Setting new TTL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update TTL in DB": {
+      "main": [
+        [
+          {
+            "node": "Set new TTL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit TTL": {
+      "main": [
+        [
+          {
+            "node": "Will_SaveConf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Setting new TTL": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Netscaler Config": {
+      "main": [
+        [
+          {
+            "node": "Check Cached Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cannot save ns config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Update TTL in DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NS_ToBeSaved": {
+      "main": [
+        [
+          {
+            "node": "Save Netscaler Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Cached Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Will_SaveConf": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e6a0c349-5a19-4ce8-8eba-5060158ee11b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "HbfKYLGwDwzzAjft",
+  "tags": []
+}

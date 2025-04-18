@@ -1,0 +1,586 @@
+{
+  "name": "NS_Block_IP_queue",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "netscaler_rate_limit_webhook",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1080,
+        120
+      ],
+      "id": "92ec14e9-21b0-4503-8c48-c0b0a76ecd6c",
+      "name": "Webhook",
+      "webhookId": "41411177-e100-4117-bce8-7d6ee8706c80"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract required parameters from webhook input\nconst vserver = $input.first().json.headers.host;\nconst ip = $input.first().json.query.ip;\nconst attack_type = $input.first().json.query.attack_type;\nconst nsip = $input.first().json.query.nsip;\n\n// Get the timestamp in ISO format for better database compatibility\nconst timestamp = new Date().toISOString();\n\n// Calculate expiration date based on default TTL (24 hours = 1440 minutes)\n// This will be updated later with the actual TTL from netscaler config\nconst defaultTtlMinutes = 1440; // 24 hours\nconst expires_at = new Date(new Date().getTime() + defaultTtlMinutes * 60000).toISOString();\n\nreturn {\n  ip,\n  nsip,\n  attack_type,\n  vserver,\n  timestamp,\n  expires_at\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -860,
+        120
+      ],
+      "id": "addebfeb-ec40-4eb2-b785-901885e9ddde",
+      "name": "Extract Parameters"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- First check if this IP is already being actively blocked on the specific Netscaler\nSELECT EXISTS (\n    SELECT 1 \n    FROM queue \n    WHERE ip = $1 AND nsip = $2 AND active = TRUE\n) as already_blocked;\n",
+        "options": {
+          "queryReplacement": "={{ $json.ip }}, {{ $json.nsip }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -640,
+        120
+      ],
+      "id": "b4354644-0098-4961-9289-cdc8a791b64a",
+      "name": "Check If IP Already Blocked",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the result from the DB check\nconst isBlocked = $input.first().json.already_blocked;\n\n// Combine with the parameters from the first node\nreturn {\n  ip: $('Extract Parameters').first().json.ip,\n  nsip: $('Extract Parameters').first().json.nsip,\n  attack_type: $('Extract Parameters').first().json.attack_type,\n  vserver: $('Extract Parameters').first().json.vserver,\n  timestamp: $('Extract Parameters').first().json.timestamp,\n  expires_at: $('Extract Parameters').first().json.expires_at,\n  already_blocked: isBlocked\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        120
+      ],
+      "id": "673f54b2-cdec-40d2-a1c3-784d9ed12bf2",
+      "name": "Prepare Queue Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.already_blocked }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        120
+      ],
+      "id": "b5ae4f7a-de52-4a73-940d-f9bb0eaa3de2",
+      "name": "Is IP Already Blocked?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Update the timestamp for an existing active block on the specific Netscaler\nUPDATE queue\nSET \n    timestamp = $1,\n    comment = 'Attack repeated: ' || ' attack_type: ' || $4 || ' at ' || $1\nWHERE \n    ip = $2 AND \n    nsip = $3 AND\n    active = TRUE;\n",
+        "options": {
+          "queryReplacement": "={{ $json.timestamp }}, {{ $json.ip }}, {{ $json.nsip }}, {{ $json.attack_type }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        40,
+        -60
+      ],
+      "id": "563854db-e93f-4391-9d95-836c751e13ab",
+      "name": "Update Existing Block",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Insert new IP into queue\nINSERT INTO queue (\n    nsip,\n    ip,\n    attack_type,\n    vserver,\n    timestamp,\n    processed,\n    active,\n    block_count,\n    comment\n)\nVALUES (\n    $1, $2, $3, $4, $5, FALSE, FALSE, 1,\n    'Initial block: ' || $3 || ' at ' || $5\n)\nRETURNING id;\n\n-- Log the operation\nINSERT INTO operation_log (\n    operation_type,\n    nsip,\n    ip,\n    vserver,\n    status,\n    message\n)\nVALUES (\n    'QUEUE_NEW_IP',\n    $1,\n    $2,\n    $4,\n    'SUCCESS',\n    'New IP queued for blocking. Attack type: ' || $3\n);\n",
+        "options": {
+          "queryReplacement": "={{ $('Is IP Already Blocked?').item.json.nsip }},{{ $('Is IP Already Blocked?').item.json.ip }} , {{ $('Is IP Already Blocked?').item.json.attack_type }}, {{ $('Is IP Already Blocked?').item.json.vserver }},{{ $('Is IP Already Blocked?').item.json.timestamp }} , {{ $('Is IP Already Blocked?').item.json.expires_at }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        260
+      ],
+      "id": "77d1b716-9924-49b2-b6c8-7ffd7ab4b159",
+      "name": "Add IP to Queue",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log that we're updating an existing block\nconst ip = $('Prepare Queue Data').first().json.ip;\nconst nsip = $('Prepare Queue Data').first().json.nsip;\nconst attack_type = $('Prepare Queue Data').first().json.attack_type;\n\nconst result = {\n  success: true,\n  message: `IP ${ip} from ${nsip} already blocked. Attack repeated: ${attack_type}`,\n  status: 'already_blocked'\n};\n\n// Log operation\nconsole.log(`[${new Date().toISOString()}] ${result.message}`);\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -60
+      ],
+      "id": "123a4e5f-b131-4904-9814-c0446de85284",
+      "name": "Format Update Response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Log the repeat attack\nINSERT INTO operation_log (\n    operation_type,\n    nsip,\n    ip,\n    status,\n    message\n)\nVALUES (\n    'REPEAT_ATTACK',\n    $1,\n    $2,\n    'SUCCESS',\n    'Repeated attack detected. Attack type: ' || $3\n);\n",
+        "options": {
+          "queryReplacement": "={{ $('Is IP Already Blocked?').item.json.nsip }}, {{ $('Is IP Already Blocked?').item.json.ip }}, {{ $('Is IP Already Blocked?').item.json.attack_type }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        -60
+      ],
+      "id": "27d2fe80-7d85-4bcf-8ff6-774be4e40257",
+      "name": "Log Repeat Attack",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Check if already blocked\nThis workflow efficiently handles IP blocking requests from Netscaler",
+        "height": 280,
+        "width": 1080,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1140,
+        40
+      ],
+      "typeVersion": 1,
+      "id": "7dc4a041-f80d-49be-88a6-1baa86039e28",
+      "name": "Workflow Description"
+    },
+    {
+      "parameters": {
+        "content": "## IP already blocked, updating DB info\n",
+        "height": 280,
+        "width": 680,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -40,
+        -140
+      ],
+      "typeVersion": 1,
+      "id": "97566861-df37-4cc0-9e78-78b27b5ecbed",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## IP to be blocked\n",
+        "height": 400,
+        "width": 680,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -40,
+        220
+      ],
+      "typeVersion": 1,
+      "id": "d454486b-ab0e-4a4e-8154-b2b9229aabb1",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## DEBUG",
+        "height": 260,
+        "width": 1460,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1160,
+        1440
+      ],
+      "typeVersion": 1,
+      "id": "33da001e-9b65-4c57-bbdf-5e69cd356552",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE queue RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -840,
+        1520
+      ],
+      "id": "dbff0ae0-8deb-4d29-a467-fe530376b7ec",
+      "name": "DELETE FROM QUEUE",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM operation_log;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -220,
+        1520
+      ],
+      "id": "24cba203-9ae4-405e-b510-3e8b017df23c",
+      "name": "GENERAL QUERY",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE operation_log RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -420,
+        1520
+      ],
+      "id": "399175df-dc1c-409a-aa11-dc7d59a13f83",
+      "name": "DELETE FROM operation_log",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM operation_log;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -640,
+        1520
+      ],
+      "id": "f9ef4157-212f-4743-bdf5-b96fa77266ad",
+      "name": "SELECT * FROM operation_log1",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Check if IP exists in queue for this nsip\nSELECT \n    id,\n    nsip,\n    ip,\n    block_count,\n    active,\n    processed\nFROM queue\nWHERE \n    nsip = $1 AND \n    ip = $2\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $json.nsip }}, {{ $json.ip }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        20,
+        320
+      ],
+      "id": "eb9ccc65-7ddf-4486-96b2-624089ee2310",
+      "name": "Check if IP in queue",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00136776-ad7f-480a-8b41-1ca32dc15638",
+              "leftValue": "={{Object.keys($json).length <= 0 || !$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        320
+      ],
+      "id": "7f989913-1edb-4a52-b9db-0599678451bc",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Update existing IP in queue\nUPDATE queue\nSET \n    timestamp = $5,\n    processed = FALSE,\n    attack_type = $3,\n    vserver = $4,\n    block_count = block_count + 1,\n    comment = 'Updated block: ' || $3 || ' at ' || $5 || ', attempt #' || (block_count + 1)::text\nWHERE \n    nsip = $1 AND\n    ip = $2\nRETURNING id, block_count;\n\n-- Log the operation\nINSERT INTO operation_log (\n    operation_type,\n    nsip,\n    ip,\n    vserver,\n    status,\n    message\n)\nVALUES (\n    CASE \n        WHEN EXISTS (SELECT 1 FROM queue WHERE nsip = $1 AND ip = $2 AND active = TRUE) \n        THEN 'QUEUE_UPDATE_ACTIVE_IP' \n        ELSE 'QUEUE_UPDATE_IP' \n    END,\n    $1,\n    $2,\n    $4,\n    'SUCCESS',\n    CASE \n        WHEN EXISTS (SELECT 1 FROM queue WHERE nsip = $1 AND ip = $2 AND active = TRUE) \n        THEN 'Updated already active IP. Attack type: ' \n        ELSE 'Updated queued IP. Attack type: ' \n    END || $3\n);\n",
+        "options": {
+          "queryReplacement": "={{ $('Is IP Already Blocked?').item.json.nsip }}, {{ $('Is IP Already Blocked?').item.json.ip }}, {{ $('Is IP Already Blocked?').item.json.attack_type }}, {{ $('Is IP Already Blocked?').item.json.vserver }},{{ $('Is IP Already Blocked?').item.json.timestamp }}, "
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        440
+      ],
+      "id": "64795e33-8a19-4a04-bc91-aa2ad247fea2",
+      "name": "Update IP to Queue",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- First check if this IP is already being actively blocked on the specific Netscaler\nSELECT * FROM queue;\nSELECT \n    NOW() AS server_time,\n    CURRENT_TIMESTAMP AS current_timestamp,\n    TIMEZONE('UTC', NOW()) AS utc_time;",
+        "options": {
+          "queryReplacement": ""
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1040,
+        1520
+      ],
+      "id": "e3721d93-d6d9-489a-b828-4a482af5ee91",
+      "name": "SELECT * FROM queue",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE queue\nSET \n    active = false,\n    processed = false,\n    deactivated_at = CURRENT_TIMESTAMP\nWHERE \n    nsip = '10.0.0.40'\n    AND active = true;",
+        "options": {
+          "queryReplacement": "\"10.0.0.40\""
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        20,
+        1520
+      ],
+      "id": "53660ccf-2a90-4996-9360-5c0a799bbe3a",
+      "name": "SET IP UNPROCESSED",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parameters": {
+      "main": [
+        [
+          {
+            "node": "Check If IP Already Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If IP Already Blocked": {
+      "main": [
+        [
+          {
+            "node": "Prepare Queue Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Queue Data": {
+      "main": [
+        [
+          {
+            "node": "Is IP Already Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is IP Already Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Update Existing Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check if IP in queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Existing Block": {
+      "main": [
+        [
+          {
+            "node": "Format Update Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add IP to Queue": {
+      "main": [
+        []
+      ]
+    },
+    "Format Update Response": {
+      "main": [
+        [
+          {
+            "node": "Log Repeat Attack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if IP in queue": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Add IP to Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update IP to Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update IP to Queue": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "30c8d6b5-9c58-4495-acd9-6a149c81751c",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "9hphJXWnC90rehBi",
+  "tags": []
+}

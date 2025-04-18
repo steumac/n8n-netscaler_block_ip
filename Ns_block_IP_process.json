@@ -1,0 +1,975 @@
+{
+  "name": "NS_Block_IP_process",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1720,
+        -240
+      ],
+      "id": "8e1faa49-c83a-46cf-ad3e-4c1a8e28a6fa",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Get the first unprocessed queue item and all its related configuration data\nWITH first_unprocessed AS (\n    SELECT *\n    FROM queue\n    WHERE processed = FALSE\n    ORDER BY timestamp ASC\n    LIMIT 1\n)\nSELECT \n    q.*,\n    nc.config_key,\n    nc.config_key_name,\n    nc.config_key_value,\n    nc.last_updated AS config_last_updated\nFROM first_unprocessed q\nLEFT JOIN netscaler_config nc ON q.nsip = nc.nsip\nORDER BY nc.config_key_name;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1920,
+        -240
+      ],
+      "id": "c1882702-22fa-414c-81dc-90ed17288130",
+      "name": "Get Unprocessed IPs Batch",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.id ? 2 : 0 }}",
+              "operation": "notEqual"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        -240
+      ],
+      "id": "690aab95-1a88-43cb-95ef-e367687f9823",
+      "name": "Has Unprocessed IPs?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Query to extract all datasets related to nsip values in netscaler_config\n-- Ordered by ip_count (descending) and excluding full datasets\n-- Also fetching the dataset variable name from config\nSELECT DISTINCT \n    ds.nsip, \n    ds.dataset_name, \n    ds.ip_count, \n    ds.max_capacity, \n    ds.last_updated,\n    cfg_var.config_key_value AS dataset_var_name\nFROM netscaler_datasets ds\nINNER JOIN (\n    SELECT DISTINCT nsip \n    FROM netscaler_config\n) cfg ON ds.nsip = cfg.nsip\nLEFT JOIN netscaler_config cfg_var ON \n    ds.nsip = cfg_var.nsip AND \n    cfg_var.config_key = 'Block_IP_Dataset_VAR_name'\nORDER BY ds.ip_count DESC, ds.nsip, ds.dataset_name;\n",
+        "options": {
+          "queryReplacement": "={{ $json.nsip }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2720,
+        -260
+      ],
+      "id": "57c320da-351c-4e16-9ea1-2050b41e9b66",
+      "name": "Find Available Dataset",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - New dataset created on {{ $('Switch1').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Block IP - new dataset added to ns {{ $('Switch1').item.json.nsip }} \ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\n\n########################################\nUPDATE THE POLICIES USING THOSE DATASETS\n########################################\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4040,
+        -140
+      ],
+      "id": "e78ac6af-2a4a-48c2-bf6c-d27fd2f49386",
+      "name": "Send New Dataset Email",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://{{ $('Switch1').item.json.nsip }}/nitro/v1/config/policydataset_value_binding",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"policydataset_value_binding\": {\n    \"name\": \"{{ $('Switch1').item.json.dataset_name }}\",\n    \"value\": \"{{ $('Switch1').item.json.ip }}\",\n    \"comment\": \"Added by n8n, attack-type {{ $('Extract dataset prefix').item.json.attack_type }}, on {{ $('Extract dataset prefix').item.json.vserver }} at {{ $('Extract dataset prefix').item.json.timestamp }}\"\n  }\n}\n",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "662873e6-262e-4434-9347-beedb72c098b",
+      "name": "Add IP to Netscaler Dataset",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        4480,
+        -280
+      ],
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Switch1').item.json.nsip }}/nitro/v1/config/nsconfig?action=save",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"nsconfig\":\n    {}\n}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "13b2fa25-8e8f-407b-ac97-ccb6a2fe7ffe",
+      "name": "Save Netscaler Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        4940,
+        -280
+      ],
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Get IPs to be processed\n",
+        "height": 640,
+        "width": 760,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1640,
+        -380
+      ],
+      "typeVersion": 1,
+      "id": "900451b2-a25f-4838-b814-6772ec4d63d2",
+      "name": "Workflow Description"
+    },
+    {
+      "parameters": {
+        "content": "## Dataset Management\nFind or create appropriate dataset for IP blocking. Uses database to track dataset capacity.",
+        "height": 640,
+        "width": 1800,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2420,
+        -380
+      ],
+      "typeVersion": 1,
+      "id": "035c7055-852b-4a89-b9de-92f37d835962",
+      "name": "Dataset Management Note"
+    },
+    {
+      "parameters": {
+        "content": "# DEBUG\n## TABLE queue\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## TABLE netscaler_config\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## TABLE: netscaler_datasets",
+        "height": 860,
+        "width": 900,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1340,
+        1180
+      ],
+      "typeVersion": 1,
+      "id": "9288ab6d-b3f9-4461-8140-5a7bb8caafa9",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Main queue table for IP blocking requests\nCREATE TABLE IF NOT EXISTS queue (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    ip VARCHAR(255) NOT NULL,\n    attack_type VARCHAR(50) NOT NULL,\n    vserver VARCHAR(255) NOT NULL,\n    datasetname VARCHAR(255),\n    netscaler_index INTEGER,\n    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    processed BOOLEAN DEFAULT FALSE,\n    processed_at TIMESTAMPTZ,\n    active BOOLEAN DEFAULT FALSE,\n    deactivated_at TIMESTAMPTZ,\n    expires_at TIMESTAMPTZ,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    retry_count INTEGER DEFAULT 0,\n    last_error TEXT,\n    comment TEXT\n);\n\n-- Configuration table for caching Netscaler settings\nCREATE TABLE IF NOT EXISTS netscaler_config (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    config_key VARCHAR(255) NOT NULL,\n    config_value TEXT NOT NULL,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, config_key)\n);\n\n-- Dataset tracking table to avoid constant HTTP requests\nCREATE TABLE IF NOT EXISTS netscaler_datasets (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    dataset_name VARCHAR(255) NOT NULL,\n    ip_count INTEGER DEFAULT 0,\n    max_capacity INTEGER DEFAULT 50000,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, dataset_name)\n);\n\n-- Operational log for tracking actions and errors\nCREATE TABLE IF NOT EXISTS operation_log (\n    id SERIAL PRIMARY KEY,\n    operation_type VARCHAR(50) NOT NULL,\n    nsip VARCHAR(255),\n    ip VARCHAR(255),\n    dataset_name VARCHAR(255),\n    status VARCHAR(50) NOT NULL,\n    message TEXT,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Add indexes for performance\nCREATE INDEX IF NOT EXISTS idx_queue_nsip ON queue(nsip);\nCREATE INDEX IF NOT EXISTS idx_queue_ip ON queue(ip);\nCREATE INDEX IF NOT EXISTS idx_queue_processed ON queue(processed);\nCREATE INDEX IF NOT EXISTS idx_queue_timestamp ON queue(timestamp);\nCREATE INDEX IF NOT EXISTS idx_queue_active ON queue(active);\nCREATE INDEX IF NOT EXISTS idx_queue_expires_at ON queue(expires_at);\nCREATE INDEX IF NOT EXISTS idx_queue_dataset ON queue(datasetname);\n\n-- Index for config lookups\nCREATE INDEX IF NOT EXISTS idx_config_nsip_key ON netscaler_config(nsip, config_key);\n\n-- Index for dataset tracking\nCREATE INDEX IF NOT EXISTS idx_datasets_nsip ON netscaler_datasets(nsip);\nCREATE INDEX IF NOT EXISTS idx_datasets_name ON netscaler_datasets(dataset_name);\nCREATE INDEX IF NOT EXISTS idx_datasets_count ON netscaler_datasets(ip_count);\n\n-- Create a function to find or create dataset\nCREATE OR REPLACE FUNCTION find_available_dataset(p_nsip VARCHAR, p_default_prefix VARCHAR DEFAULT 'Block_IP_list_')\nRETURNS VARCHAR AS $$\nDECLARE\n    v_dataset VARCHAR;\n    v_count INTEGER;\n    v_max_capacity INTEGER := 50000;\n    v_highest_num INTEGER := 0;\n    v_dataset_rec RECORD;\nBEGIN\n    -- Find a dataset with room for more IPs\n    SELECT dataset_name INTO v_dataset\n    FROM netscaler_datasets\n    WHERE nsip = p_nsip AND ip_count < max_capacity\n    ORDER BY dataset_name\n    LIMIT 1;\n    \n    -- If found, return it\n    IF v_dataset IS NOT NULL THEN\n        RETURN v_dataset;\n    END IF;\n    \n    -- If not found, determine the next dataset name\n    FOR v_dataset_rec IN \n        SELECT dataset_name \n        FROM netscaler_datasets \n        WHERE nsip = p_nsip\n        ORDER BY dataset_name\n    LOOP\n        -- Extract number from dataset name\n        v_count := REGEXP_REPLACE(v_dataset_rec.dataset_name, '[^0-9]', '', 'g');\n        IF v_count::INTEGER > v_highest_num THEN\n            v_highest_num := v_count::INTEGER;\n        END IF;\n    END LOOP;\n    \n    -- Create new dataset name with incremented number\n    v_dataset := p_default_prefix || (v_highest_num + 1)::VARCHAR;\n    \n    -- Insert the new dataset record\n    INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count, max_capacity)\n    VALUES (p_nsip, v_dataset, 0, v_max_capacity);\n    \n    -- Log the creation of a new dataset\n    INSERT INTO operation_log (operation_type, nsip, dataset_name, status, message)\n    VALUES ('CREATE_DATASET', p_nsip, v_dataset, 'SUCCESS', 'Created new dataset');\n    \n    RETURN v_dataset;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to check and find expired IPs\nCREATE OR REPLACE FUNCTION clean_expired_ips()\nRETURNS TABLE (nsip VARCHAR, ip VARCHAR, datasetname VARCHAR) AS $$\nBEGIN\n    RETURN QUERY\n    SELECT q.nsip, q.ip, q.datasetname\n    FROM queue q\n    WHERE q.active = TRUE \n      AND q.expires_at < NOW();\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a procedure to increment IP count for a dataset\nCREATE OR REPLACE PROCEDURE increment_dataset_ip_count(p_nsip VARCHAR, p_dataset VARCHAR)\nLANGUAGE plpgsql AS $$\nBEGIN\n    -- Increment the count and update timestamp\n    UPDATE netscaler_datasets\n    SET ip_count = ip_count + 1,\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset;\n    \n    -- If no rows updated, it means the dataset doesn't exist yet\n    IF NOT FOUND THEN\n        INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count)\n        VALUES (p_nsip, p_dataset, 1);\n    END IF;\nEND;\n$$;\n\n-- Create a procedure to decrement IP count for a dataset\nCREATE OR REPLACE PROCEDURE decrement_dataset_ip_count(p_nsip VARCHAR, p_dataset VARCHAR)\nLANGUAGE plpgsql AS $$\nBEGIN\n    -- Decrement the count and update timestamp\n    UPDATE netscaler_datasets\n    SET ip_count = GREATEST(0, ip_count - 1),\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset;\nEND;\n$$;\n\n-- Create a function to check if an IP is already blocked\nCREATE OR REPLACE FUNCTION is_ip_blocked(p_ip VARCHAR)\nRETURNS BOOLEAN AS $$\nDECLARE\n    v_is_blocked BOOLEAN;\nBEGIN\n    SELECT EXISTS (\n        SELECT 1 FROM queue\n        WHERE ip = p_ip AND active = TRUE\n    ) INTO v_is_blocked;\n    \n    RETURN v_is_blocked;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to update or insert config values\nCREATE OR REPLACE FUNCTION upsert_config(p_nsip VARCHAR, p_key VARCHAR, p_value TEXT)\nRETURNS VOID AS $$\nBEGIN\n    INSERT INTO netscaler_config (nsip, config_key, config_value, last_updated)\n    VALUES (p_nsip, p_key, p_value, NOW())\n    ON CONFLICT (nsip, config_key) \n    DO UPDATE SET \n        config_value = p_value,\n        last_updated = NOW();\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to get config value with default\nCREATE OR REPLACE FUNCTION get_config(p_nsip VARCHAR, p_key VARCHAR, p_default TEXT DEFAULT NULL)\nRETURNS TEXT AS $$\nDECLARE\n    v_value TEXT;\nBEGIN\n    SELECT config_value INTO v_value\n    FROM netscaler_config\n    WHERE nsip = p_nsip AND config_key = p_key;\n    \n    IF v_value IS NULL THEN\n        RETURN p_default;\n    ELSE\n        RETURN v_value;\n    END IF;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to batch process IPs\nCREATE OR REPLACE FUNCTION get_unprocessed_ips(p_batch_size INTEGER DEFAULT 10)\nRETURNS SETOF queue AS $$\nBEGIN\n    RETURN QUERY\n    SELECT * FROM queue\n    WHERE processed = FALSE\n    ORDER BY timestamp ASC\n    LIMIT p_batch_size;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to mark IPs as processed with a specific dataset\nCREATE OR REPLACE FUNCTION mark_ip_processed(\n    p_id INTEGER, \n    p_datasetname VARCHAR, \n    p_netscaler_index INTEGER, \n    p_ttl_minutes INTEGER DEFAULT 1440\n)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET processed = TRUE,\n        processed_at = NOW(),\n        active = TRUE,\n        datasetname = p_datasetname,\n        netscaler_index = p_netscaler_index,\n        expires_at = NOW() + (p_ttl_minutes * INTERVAL '1 minute')\n    WHERE id = p_id;\n    \n    -- Log the operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        'BLOCK_IP', \n        nsip, \n        ip, \n        p_datasetname, \n        'SUCCESS', \n        'IP blocked successfully'\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to mark IPs as deactivated\nCREATE OR REPLACE FUNCTION deactivate_ip(p_id INTEGER)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET active = FALSE,\n        deactivated_at = NOW()\n    WHERE id = p_id;\n    \n    -- Log the operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        'UNBLOCK_IP', \n        nsip, \n        ip, \n        datasetname, \n        'SUCCESS', \n        'IP unblocked due to TTL expiration'\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to record errors\nCREATE OR REPLACE FUNCTION record_error(\n    p_id INTEGER,\n    p_error TEXT,\n    p_retry BOOLEAN DEFAULT TRUE\n)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE queue\n    SET retry_count = retry_count + 1,\n        last_error = p_error,\n        processed = NOT p_retry  -- If no retry, mark as processed\n    WHERE id = p_id;\n    \n    -- Log the error\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        ip, \n        dataset_name, \n        status, \n        message\n    )\n    SELECT \n        CASE \n            WHEN processed = FALSE THEN 'BLOCK_IP_ERROR'\n            ELSE 'UNBLOCK_IP_ERROR'\n        END,\n        nsip, \n        ip, \n        datasetname, \n        'ERROR', \n        p_error\n    FROM queue \n    WHERE id = p_id;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Create a function to sync dataset counts from Netscaler\nCREATE OR REPLACE FUNCTION sync_dataset_counts(p_nsip VARCHAR, p_dataset_name VARCHAR, p_actual_count INTEGER)\nRETURNS VOID AS $$\nBEGIN\n    UPDATE netscaler_datasets\n    SET ip_count = p_actual_count,\n        last_updated = NOW()\n    WHERE nsip = p_nsip AND dataset_name = p_dataset_name;\n    \n    -- If dataset doesn't exist yet, create it\n    IF NOT FOUND THEN\n        INSERT INTO netscaler_datasets (nsip, dataset_name, ip_count, last_updated)\n        VALUES (p_nsip, p_dataset_name, p_actual_count, NOW());\n    END IF;\n    \n    -- Log the sync operation\n    INSERT INTO operation_log (\n        operation_type, \n        nsip, \n        dataset_name, \n        status, \n        message\n    )\n    VALUES (\n        'SYNC_DATASET', \n        p_nsip, \n        p_dataset_name, \n        'SUCCESS', \n        'Synced dataset count: ' || p_actual_count\n    );\nEND;\n$$ LANGUAGE plpgsql;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1380,
+        1300
+      ],
+      "id": "3113bb2a-e0ca-4ebf-be56-6e6e6c36f0c2",
+      "name": "Create Table queue",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Configuration table for caching Netscaler settings\nCREATE TABLE IF NOT EXISTS netscaler_config (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    config_key VARCHAR(255) NOT NULL,\n    config_value TEXT NOT NULL,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, config_key)\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1380,
+        1560
+      ],
+      "id": "d1e05cf9-fd69-4512-8797-dd25522fe007",
+      "name": "Create Table netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_config;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1580,
+        1560
+      ],
+      "id": "e4d696c8-418b-46ef-8896-16e928611cc7",
+      "name": "SELECT * FROM netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM netscaler_datasets;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1580,
+        1840
+      ],
+      "id": "60005350-6034-4f7c-9972-69c558c9a017",
+      "name": "SELECT * FROM netscaler_dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Dataset tracking table to avoid constant HTTP requests\nCREATE TABLE IF NOT EXISTS netscaler_datasets (\n    id SERIAL PRIMARY KEY,\n    nsip VARCHAR(255) NOT NULL,\n    dataset_name VARCHAR(255) NOT NULL,\n    ip_count INTEGER DEFAULT 0,\n    max_capacity INTEGER DEFAULT 50000,\n    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(nsip, dataset_name)\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1380,
+        1840
+      ],
+      "id": "22545842-3482-4fe2-aa8b-ee4eaba9b620",
+      "name": "Create Table netscaler_dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE netscaler_datasets RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1800,
+        1840
+      ],
+      "id": "f10be94d-b918-4222-99f5-29d59812451e",
+      "name": "DELETE * FROM netscaler_datasets",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE netscaler_config RESTART IDENTITY;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1800,
+        1560
+      ],
+      "id": "eaec33f2-5730-412c-ae82-a7bf5d155eef",
+      "name": "DELETE * FROM netscaler_config",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the input data\nconst inputData = $input.all();\n\n// First, we need to extract the json property from each item\nconst jsonData = inputData.map(item => item.json);\n\n// Now use JMESPath with the correct syntax on the extracted json data\nconst datasetConfig = $jmespath(jsonData, \"[?config_key=='Block_IP_Dataset_VAR_name'] | [0]\");\n\n// If no matching config is found, return a default or error\nif (!datasetConfig) {\n  return {\n    error: true,\n    message: \"No Block_IP_Dataset_VAR_name configuration found\"\n  };\n}\n\nconst ttlConfig = $jmespath(jsonData, \"[?config_key=='Block_IP_TTL_VAR_name'] | [0]\");\n\n// If no matching config is found, return a default or error\nif (!ttlConfig) {\n  return {\n    error: true,\n    message: \"No Block_IP_TTL_VAR_name configuration found\"\n  };\n}\n\n// Extract the required fields\nconst result = {\n  nsip: datasetConfig.nsip,\n  ip: datasetConfig.ip,\n  config_key_name: datasetConfig.config_key_name,\n  config_key_value: datasetConfig.config_key_value.replace(/^\\\\\"|\\\\\"|\"$/g, ''),\n  attack_type: datasetConfig.attack_type,\n  vserver: datasetConfig.vserver,\n  timestamp: datasetConfig.timestamp,\n  block_ip_ttl: ttlConfig.config_key_value,\n  queue_id: datasetConfig.id\n};\n\n// Return the extracted data\nreturn result;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        -260
+      ],
+      "id": "7e6f10f6-0c72-4ece-b361-af27a507c8c8",
+      "name": "Extract dataset prefix"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the input data from the query result\nconst queryResults = $input.all();\n\n// set the max capacity for testing purposes\nconst max_capacity = 3;\n\n// Extract the json data from each item\nconst datasets = queryResults.map(item => item.json).filter(item => item && Object.keys(item).length > 0);\n\n// Initialize the result object\nlet result = {};\n\n// Find datasets that are not at full capacity\nconst availableDatasets = datasets.filter(dataset => \n  dataset.ip_count < dataset.max_capacity\n);\n\n// Case 1: We have datasets with available capacity\nif (availableDatasets.length > 0) {\n  // Sort by ip_count in descending order\n  availableDatasets.sort((a, b) => b.ip_count - a.ip_count);\n  const selectedDataset = availableDatasets[0];\n  \n  result = {\n    status: \"dataset_available\",\n    message: \"Found dataset with available capacity\",\n    dataset_name: selectedDataset.dataset_name,\n    nsip: selectedDataset.nsip,\n    ip: $('Extract dataset prefix').first().json.ip,\n    ip_count: selectedDataset.ip_count,\n    max_capacity: selectedDataset.max_capacity,\n    dataset_var_name: selectedDataset.dataset_var_name.replace(/^\\\\\"|\\\\\"|\"$/g, ''),\n    available_capacity: selectedDataset.max_capacity - selectedDataset.ip_count\n  };\n}\n// Case 2: No datasets available or all are at full capacity - need to create a new one\nelse {\n  // Get the nsip from the available context\n  const nsip = datasets.length > 0 ? \n    datasets[0].nsip : $('Extract dataset prefix')?.first()?.json?.nsip;\n  \n  // Case 2a: No datasets at all - use the prefix from Extract dataset prefix\n  if (datasets.length === 0) {\n    // Get the dataset prefix from the Extract dataset prefix node\n    const datasetPrefix = $('Extract dataset prefix').first().json.config_key_value;\n    \n    // Clean up the prefix (remove any quotes)\n    const cleanPrefix = datasetPrefix.replace(/^\\\\\"|\\\\\"|\"$/g, '').replace(/^\"|\"$/g, '');\n    \n    // Create suggested name with suffix _1\n    const suggestedName = `${cleanPrefix}_1`;\n    \n    result = {\n      status: \"need_new_dataset\",\n      message: \"No datasets found\",\n      dataset_name: suggestedName,\n      nsip: nsip,\n      ip: $('Extract dataset prefix').first().json.ip,\n      dataset_var_name: cleanPrefix,\n      max_capacity: max_capacity\n    };\n  }\n  // Case 2b: Datasets exist but all are at full capacity\n  else {\n    // Extract the base name and number from existing datasets\n    const datasetInfo = datasets.map(ds => {\n      const match = ds.dataset_name.match(/^(.*?)_(\\d+)$/);\n      return match ? \n        { baseName: match[1], number: parseInt(match[2], 10) } : \n        { baseName: ds.dataset_name, number: 0 };\n    });\n    \n    // Find the highest number\n    const highestNumber = Math.max(...datasetInfo.map(info => info.number));\n    \n    // Use the base name from the first dataset\n    const baseName = datasetInfo[0].baseName;\n    \n    // Create suggested name with incremented suffix\n    const suggestedName = `${baseName}_${highestNumber + 1}`;\n    \n    result = {\n      status: \"need_new_dataset\",\n      message: \"All existing datasets are at full capacity\",\n      dataset_name: suggestedName,\n      nsip: nsip,\n      ip: $('Extract dataset prefix').first().json.ip,\n      dataset_var_name: datasets[0].dataset_var_name\n    };\n  }\n}\n\n// Return the result with the status for the switch node\nreturn result;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2940,
+        -260
+      ],
+      "id": "0073c0c8-63ba-4aef-a382-7aa5e605d20e",
+      "name": "Need new dataset?",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "dataset_available",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "49acc9fd-95f5-40ec-8ec0-678b232f8797"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok_dataset"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "82f26947-e6f6-4be4-a2cf-665e8250e23a",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "need_new_dataset",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "new_dataset"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3160,
+        -260
+      ],
+      "id": "03008958-7094-46a0-9975-b008fe75134c",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Switch1').item.json.nsip }}/nitro/v1/config/policydataset",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "citrixAdcApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"policydataset\": {\n    \"name\": \"{{ $('Switch1').item.json.dataset_name }}\",\n    \"type\": \"ipv4\",\n    \"comment\": \"Dataset for blocked IPs due to security threats\"\n  }\n} ",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "0e99688e-b4e3-4b1a-8b79-d4a16cb23496",
+      "name": "Create New Dataset in Netscaler1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        3580,
+        -140
+      ],
+      "alwaysOutputData": false,
+      "credentials": {
+        "citrixAdcApi": {
+          "id": "o709NwRbSCOcjRh7",
+          "name": "Netscaler ADC account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n-- Insert a new dataset into netscaler_datasets table\nINSERT INTO netscaler_datasets (\n    nsip, \n    dataset_name, \n    ip_count, \n    max_capacity, \n    created_at, \n    last_updated\n)\nVALUES (\n    $1,                -- nsip\n    $2,                -- dataset_name\n    0,                 -- ip_count (starting with 0)\n    $3,                -- max_capacity (default is 3 for testing, 50000 for production)\n    NOW(),             -- created_at\n    NOW()              -- last_updated\n)\nON CONFLICT (nsip, dataset_name) \nDO UPDATE SET\n    last_updated = NOW();\n",
+        "options": {
+          "queryReplacement": "={{ $json.nsip }},{{ $json.dataset_name }}, {{ $json.max_capacity }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3360,
+        -140
+      ],
+      "id": "5b9bf22d-6621-4561-a125-c2ed21e78e4f",
+      "name": "Add dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "COMMIT;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3800,
+        -140
+      ],
+      "id": "dcd83cd2-8fff-4905-ac7f-99871bd505f6",
+      "name": "Commit dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - New IP blocked on {{ $('Switch1').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Block IP - new IP blocked to ns {{ $('Switch1').item.json.nsip }} \n\noffending IP: {{ $('Switch1').item.json.ip }}\n\ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\non vServer: {{ $('Extract dataset prefix').item.json.vserver }}\n\ntimestamp: {{ $('Extract dataset prefix').item.json.timestamp }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        5200,
+        -280
+      ],
+      "id": "f7fd4345-9cec-4cc4-ac33-d4e2873cea0b",
+      "name": "Send New IP blocked",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ROLLBACK;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3800,
+        60
+      ],
+      "id": "4e495e11-f489-4220-88b2-40aa96e58e03",
+      "name": "Rollback dataset",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error creating new dataset on {{ $('Switch1').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error while adding a new dataset to ns {{ $('Switch1').item.json.nsip }} \ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4040,
+        60
+      ],
+      "id": "36d2fe21-bca8-438c-96ad-3902e0b726b8",
+      "name": "Error Creating New Dataset",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Begin transaction\nBEGIN;\n\n-- Update the queue item to mark it as processed and set the dataset name\nUPDATE queue \nSET \n    processed = TRUE,\n    processed_at = NOW(),\n    active = TRUE,\n    datasetname = $1,\n    block_count = block_count + 1,\n    expires_at = NOW() + INTERVAL '1 minute' * $2::INTEGER,\n    comment = 'Added to ' || $1 || ' at ' || NOW()\nWHERE id = $3;\n\n-- Increment the IP count for the dataset\nUPDATE netscaler_datasets\nSET \n    ip_count = ip_count + 1,\n    last_updated = NOW()\nWHERE nsip = $4 AND dataset_name = $1;\n\n-- Log the operation\nINSERT INTO operation_log (\n    operation_type, \n    nsip, \n    ip, \n    dataset_name, \n    status, \n    message,\n    created_at\n)\nVALUES (\n    'BLOCK_IP', \n    $4, \n    $5, \n    $1, \n    'SUCCESS', \n    'IP blocked successfully in dataset ' || $1,\n    NOW()\n);\n\n",
+        "options": {
+          "queryReplacement": "={{ $('Need new dataset?').item.json.dataset_name }}, {{ $('Extract dataset prefix').item.json.block_ip_ttl }}, {{ $('Extract dataset prefix').item.json.queue_id }}, {{ $('Extract dataset prefix').item.json.nsip }}, {{ $('Extract dataset prefix').item.json.ip }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4280,
+        -280
+      ],
+      "id": "207f4e84-eeb4-42c5-aae1-83d9b8513914",
+      "name": "Add block IP",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "COMMIT;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4720,
+        -280
+      ],
+      "id": "7c412af8-1737-43af-9415-5fdddd5c3e77",
+      "name": "Commit add IP",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error adding new block IP on {{ $('Switch1').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error while adding a new block IP to ns {{ $('Switch1').item.json.nsip }} \n\ndataset name: {{ $('Need new dataset?').item.json.dataset_name }}\n\nOffendig IP: {{ $('Need new dataset?').item.json.ip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4720,
+        -60
+      ],
+      "id": "3055d8a3-19fa-4d65-849d-50b9ded66620",
+      "name": "Error Blocking New IP",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Block IP Management",
+        "height": 640,
+        "width": 1180,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4240,
+        -380
+      ],
+      "typeVersion": 1,
+      "id": "559cb6cb-f9ff-4497-832e-956dc9e34372",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "sendTo": "info@sorgere.cloud",
+        "subject": "=[n8n] - Error saving the Netscaler config on {{ $('Need new dataset?').item.json.nsip }}",
+        "emailType": "text",
+        "message": "=Error while saving config on ns {{ $('Need new dataset?').item.json.nsip }}\n\ndataset name: {{ $('Need new dataset?').item.json.dataset_name }}\n\nOffendig IP: {{ $('Need new dataset?').item.json.ip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        5200,
+        -80
+      ],
+      "id": "8bee0041-de6a-4578-98df-51f57f22fb15",
+      "name": "Error Blocking New IP1",
+      "webhookId": "e079fa7d-ccdc-4960-a983-56d06b529561",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "G9yUnqDcjjwiq2XS",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM queue\nWHERE active = TRUE;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1600,
+        1300
+      ],
+      "id": "1aa119e7-5f8f-4ad5-a9ca-7156f90c61c7",
+      "name": "SELECT * FROM netscaler_config2",
+      "credentials": {
+        "postgres": {
+          "id": "QDRdbZWiEUEI15kG",
+          "name": "Postgres account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Unprocessed IPs Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Unprocessed IPs Batch": {
+      "main": [
+        [
+          {
+            "node": "Has Unprocessed IPs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Unprocessed IPs?": {
+      "main": [
+        [
+          {
+            "node": "Extract dataset prefix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Available Dataset": {
+      "main": [
+        [
+          {
+            "node": "Need new dataset?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add IP to Netscaler Dataset": {
+      "main": [
+        [
+          {
+            "node": "Commit add IP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Blocking New IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Netscaler Config": {
+      "main": [
+        [
+          {
+            "node": "Send New IP blocked",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Blocking New IP1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract dataset prefix": {
+      "main": [
+        [
+          {
+            "node": "Find Available Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need new dataset?": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Add block IP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add dataset": {
+      "main": [
+        [
+          {
+            "node": "Create New Dataset in Netscaler1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Dataset in Netscaler1": {
+      "main": [
+        [
+          {
+            "node": "Commit dataset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit dataset": {
+      "main": [
+        [
+          {
+            "node": "Send New Dataset Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send New Dataset Email": {
+      "main": [
+        [
+          {
+            "node": "Add block IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback dataset": {
+      "main": [
+        [
+          {
+            "node": "Error Creating New Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add block IP": {
+      "main": [
+        [
+          {
+            "node": "Add IP to Netscaler Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit add IP": {
+      "main": [
+        [
+          {
+            "node": "Save Netscaler Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2c5ba197-397d-45f0-b20d-af3d2e08f5f4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "gUXNmYPbCOYfhhQQ",
+  "tags": []
+}
