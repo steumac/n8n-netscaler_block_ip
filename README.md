@@ -1,6 +1,6 @@
 # Lightweight SOAR System for Citrix NetScaler
 
-Here's the Linkedin article that explain how it works:
+Here's the complete Linkedin article that explain how it works:
 https://www.linkedin.com/pulse/introducing-lightweight-soar-solution-citrix-n8nio-stefano-baronio-rjclf/
 
 Here are 5 n8n workflows that will implement a lightweight SOAR solution for Citrix Netscaler. This laboratory example shows how to digital jail the offender IPs that overlimit the a rate-limiting policy implemented in the Netscaler.
