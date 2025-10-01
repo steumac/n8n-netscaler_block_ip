@@ -1,8 +1,7 @@
-volumes:
-  n8n_storage:
-  postgres_storage:
-  netscaler_postgres_storage:  # New volume for Netscaler DB
-  qdrant_storage:
+# Using bind mounts instead of named volumes to avoid Docker volume access issues
+# volumes:
+#   n8n_storage:
+#   postgres_storage:
 
 networks:
   demo:
@@ -26,6 +25,8 @@ x-n8n: &service-n8n
     - OLLAMA_HOST=10.0.0.73:11434
     - NODE_FUNCTION_ALLOW_BUILTIN=*
     - NODE_FUNCTION_ALLOW_EXTERNAL=*
+    - N8N_RUNNERS_ENABLED=true
+    - TZ=Europe/Rome
 
 services:
   postgres:
@@ -38,8 +39,9 @@ services:
       - POSTGRES_USER
       - POSTGRES_PASSWORD
       - POSTGRES_DB
+      - TZ=Europe/Rome
     volumes:
-      - postgres_storage:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 5s
@@ -57,11 +59,37 @@ services:
       - POSTGRES_USER=${NETSCALER_POSTGRES_USER:-netscaler}
       - POSTGRES_PASSWORD=${NETSCALER_POSTGRES_PASSWORD:-netscalerpassword}
       - POSTGRES_DB=${NETSCALER_POSTGRES_DB:-netscaler_db}
+      - TZ=Europe/Rome
     ports:
       - "5433:5432"  # Map to different port to avoid conflict with n8n postgres
     volumes:
-      - netscaler_postgres_storage:/var/lib/postgresql/data
-      - ./database-schema.sql:/docker-entrypoint-initdb.d/database-schema.sql  # Mount your init script
+      - ./netscaler_postgres_data:/var/lib/postgresql/data
+      - ./database_schema.sql:/docker-entrypoint-initdb.d/database-schema.sql  # Mount your init script
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${NETSCALER_POSTGRES_USER:-netscaler} -d ${NETSCALER_POSTGRES_DB:-netscaler_db}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+# New dedicated PostgreSQL instance for Netscaler DR sync workflows
+  netscaler-dr-postgres:
+    image: postgres:16-alpine
+    hostname: netscaler_dr_postgres
+    container_name: netscaler_dr_postgres
+    networks: ['demo']
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${NETSCALER_POSTGRES_USER:-netscaler}
+      - POSTGRES_PASSWORD=${NETSCALER_POSTGRES_PASSWORD:-netscalerpassword}
+      - POSTGRES_DB=${NETSCALER_POSTGRES_DB:-netscaler_dr_db}
+      - TZ=Europe/Rome
+    ports:
+      - "5434:5432"  # Map to different port to avoid conflict with n8n postgres
+    volumes:
+      - ./netscaler_dr_postgres_data:/var/lib/postgresql/data
+      - ./database-schema-dr.sql:/docker-entrypoint-initdb.d/database-schema-dr.sql  # Mount your init script
+
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h localhost -U ${NETSCALER_POSTGRES_USER:-netscaler} -d ${NETSCALER_POSTGRES_DB:-netscaler_db}']
       interval: 5s
@@ -90,19 +118,19 @@ services:
     ports:
       - 5678:5678
     volumes:
-      - n8n_storage:/home/node/.n8n
+      - ./n8n_data:/home/node/.n8n
       - ./n8n/backup:/backup
       - ./shared:/data/shared
     depends_on:
       postgres:
         condition: service_healthy
-      n8n-import:
-        condition: service_completed_successfully
       netscaler-postgres:  # Add dependency on the new database
         condition: service_healthy
 
   qdrant:
     image: qdrant/qdrant
+    environment:
+      - TZ=Europe/Rome
     hostname: qdrant
     container_name: qdrant
     networks: ['demo']
@@ -110,4 +138,8 @@ services:
     ports:
       - 6333:6333
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - ./qdrant_data:/qdrant/storage
+
+
+    networks: ['demo']
+ 
