@@ -201,7 +201,7 @@ add ns limitIdentifier sf_ratelimit -threshold 10 -timeSlice 600 -selectorName T
 add responder action sf_ratelimit_action respondwith "SYS.NON_BLOCKING_HTTP_CALLOUT(ratelimit_callout)"
 
 # Add a Responder Policy that gets the rate limit and trigger the action
-add responder policy sf_ratelimit_pol "SYS.CHECK_LIMIT(\"sf_ratelimit\")" sf_ratelimit_action NOOP -logAction sf_ratelimit_action_called
+add responder policy sf_ratelimit_pol "SYS.CHECK_LIMIT(\"sf_ratelimit\")" sf_ratelimit_action NOOP
 
 # Bind the Responder Policy to a vServer (e.g. lb_storefront), can be bound to global for every vServer.
 bind lb vserver storefront -policyName sf_ratelimit_pol -priority 90 -gotoPriorityExpression END -type REQUEST
