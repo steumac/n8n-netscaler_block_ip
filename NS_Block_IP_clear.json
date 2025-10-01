@@ -121,7 +121,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - Block IP released on ",
         "emailType": "text",
         "message": "=Cleared blocked IP:\n",
@@ -166,7 +166,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - Error fetching blocked IPs on Netscaler {{ $('Get right datasets').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error fetching blocked IPs on Netscaler {{ $('Clean dataset name').item.json.nsip }}\n\ndataset name: {{ $('Get right datasets').item.json.matchingDatasets }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",

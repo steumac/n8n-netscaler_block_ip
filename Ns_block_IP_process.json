@@ -88,7 +88,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - New dataset created on {{ $('Switch1').item.json.nsip }}",
         "emailType": "text",
         "message": "=Block IP - new dataset added to ns {{ $('Switch1').item.json.nsip }} \ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\n\n########################################\nUPDATE THE POLICIES USING THOSE DATASETS\n########################################\n",
@@ -551,7 +551,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - New IP blocked on {{ $('Switch1').item.json.nsip }}",
         "emailType": "text",
         "message": "=Block IP - new IP blocked to ns {{ $('Switch1').item.json.nsip }} \n\noffending IP: {{ $('Switch1').item.json.ip }}\n\ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\non vServer: {{ $('Extract dataset prefix').item.json.vserver }}\n\ntimestamp: {{ $('Extract dataset prefix').item.json.timestamp }}\n",
@@ -598,7 +598,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - Error creating new dataset on {{ $('Switch1').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error while adding a new dataset to ns {{ $('Switch1').item.json.nsip }} \ndataset name: {{ $('Switch1').item.json.suggested_name }}\n\nSave config status code: {{ $json.statusCode }}\n\nstatus message: {{ $json.statusMessage }}\n\n",
@@ -670,7 +670,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - Error adding new block IP on {{ $('Switch1').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error while adding a new block IP to ns {{ $('Switch1').item.json.nsip }} \n\ndataset name: {{ $('Need new dataset?').item.json.dataset_name }}\n\nOffendig IP: {{ $('Need new dataset?').item.json.ip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
@@ -710,7 +710,7 @@
     },
     {
       "parameters": {
-        "sendTo": "info@domain.com",
+        "sendTo": "info@domain.cloud",
         "subject": "=[n8n] - Error saving the Netscaler config on {{ $('Need new dataset?').item.json.nsip }}",
         "emailType": "text",
         "message": "=Error while saving config on ns {{ $('Need new dataset?').item.json.nsip }}\n\ndataset name: {{ $('Need new dataset?').item.json.dataset_name }}\n\nOffendig IP: {{ $('Need new dataset?').item.json.ip }}\n\nerror message: {{ $json.error.message }}\n\ndescription:  {{ $json.error.description }}\n\n",
