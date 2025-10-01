@@ -232,4 +232,4 @@ add system cmdPolicy n8n_block_IP ALLOW "(^save\\s+ns\\s+config)|(^save\\s+ns\\s
 bind system user n8n_block_IP n8n_block_IP 1
 ```
 
-Here you can download the five workflows, the database schema and the docker-compose (without the .env file) used in this exercise. As mentioned above, the docker-compose lets you download and run all the instances you need to run the whole system. Remember that as discussed at the beginning, the n8n server must be behind a reverse proxy (n8n.domain.com) for the HTTP Callout configuration to work properly and for being able to properly access the n8n GUI.
+Here you can download the five workflows, the database schema and the docker-compose used in this exercise. As mentioned above, the docker-compose lets you download and run all the instances you need to run the whole system. Remember that as discussed at the beginning, the n8n server must be behind a reverse proxy (n8n.domain.com) for the HTTP Callout configuration to work properly and for being able to properly access the n8n GUI.
